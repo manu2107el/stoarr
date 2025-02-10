@@ -1,0 +1,25 @@
+{
+  "name": "stoarr",
+  "version": "0.0.1",
+  "description": "s.to Downloader",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node ./app.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/manu2107el/stoarr.git"
+  },
+  "author": "manu2107el",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/manu2107el/stoarr/issues"
+  },
+  "homepage": "https://github.com/manu2107el/stoarr#readme",
+  "dependencies": {
+    "express": "^4.21.2",
+    "jsdom": "^26.0.0",
+    "ws": "^8.18.0"
+  }
+}
