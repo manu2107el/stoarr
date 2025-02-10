@@ -13,7 +13,6 @@ function determinPlatform(url){
 async function getFullShow(seriesURL){
 
     const seasons = await getSeasonLinks(seriesURL);
-
     const show = await Promise.all(
         seasons.map(async season => {
             return {
@@ -75,8 +74,7 @@ async function getSeasonLinks(seriesURL) {
         return seasonLinks;
 
     } catch (error) {
-        console.error("Error in getSeasonLinks:", error);
-        return null; // Or throw the error
+        throw new Error("Error in getSeasonLinks:", error);
     }
 }
 
@@ -129,8 +127,8 @@ async function getSeasonVideoUrls(seasonURL) {
 
                     if (urlMatch && seasonMatch && episodeMatch) {
                         return { // Return an object for clarity
-                            season: seasonMatch[1],
-                            episode: episodeMatch[1],
+                            season: parseInt(seasonMatch[1]),
+                            episode: parseInt(episodeMatch[1]),
                             videoUrl: originUrl + urlMatch[1]
                         };
                     }
@@ -153,13 +151,13 @@ async function getSeasonVideoUrls(seasonURL) {
         return videoURLs; // Return the array of video URL objects
 
     } catch (error) {
-        console.error("Error in getSeasonVideoUrls:", error);
-        return null; // Or throw the error if you want the calling function to handle it
+        throw new Error("Error in getSeasonVideoUrls:", error);
     }
 }
 module.exports = {
     getSeasonVideoUrls,
     getSeasonLinks,
-    getFullShow
+    getFullShow,
+    determinPlatform
 };
 
