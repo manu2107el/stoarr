@@ -3,7 +3,7 @@ const http = require('http');
 const WebSocket = require('ws');
 const { spawn } = require('child_process');
 const bodyParser = require('body-parser');
-const utils = require('./src/utils')
+const showUtils = require('./src/showUtils')
 const app = express();
 const port = 3000;
 const server = http.createServer(app);
@@ -14,7 +14,7 @@ server.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 });
 
-app.post('/test', async (req, res) => {
+app.get('/show', async (req, res) => {
     
     if(req.body.type === null || req.body.type === undefined){
         res.status(400).send({ message: "type Required"})
@@ -22,7 +22,20 @@ app.post('/test', async (req, res) => {
     if(req.body.link === null || req.body.link === undefined){
         res.status(400).send({ message: "link Required"})
     }
-    res.status(200).send(await utils.getFullShow(req.body.link))
+    try{
+    switch(req.body.type){
+        case "full":
+            res.status(200).send(await showUtils.getFullShow(req.body.link))
+            break;
+        case "season":
+            res.status(200).send(await showUtils.getSeasonVideoUrls(req.body.link))
+            break;
+        default:
+            res.status(400).send({message: "invalid type specified. valid types are: full, season"})
+    }}
+    catch(error){
+        res.status(500).send({error: "an Error has occured"})
+    }
 })
 
 app.get('/spawn', (req, res) => {
