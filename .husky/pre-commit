@@ -1,5 +1,2 @@
 npx lint-staged
 jest --bail || exit 1
-
-echo "hmm"
-exit 1
