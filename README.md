@@ -34,7 +34,7 @@ npm test
 
 ## Roadmap
 
-- **MVP:** Implement core download functionality with Jellyfin integration.
+- **MVP:** Implement core download functionality.
 - **Dockerization:** Create a Docker image for easy deployment.
 - **Scheduling:** Implement scheduled downloads.
 - **Automatic Search:** Implement automatic search for new episodes.
