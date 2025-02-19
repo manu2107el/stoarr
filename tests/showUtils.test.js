@@ -34,7 +34,7 @@ test('getFullShow Structure', async () => {
                 expect.objectContaining({
                     season: expect.any(Number),
                     episode: expect.any(Number),
-                    videoUrl: expect.any(String),
+                    url: expect.any(String),
                 })
             )
         })
@@ -76,7 +76,7 @@ test('getSeasonVideoUrls Structure', async () => {
             expect.objectContaining({
                 season: expect.any(Number),
                 episode: expect.any(Number),
-                videoUrl: expect.any(String),
+                url: expect.any(String),
             })
         )
     })

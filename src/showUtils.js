@@ -1,4 +1,5 @@
 var { JSDOM } = require('jsdom')
+const fs = require('fs')
 
 function determinPlatform(url) {
     if (url.includes('aniworld.to')) {
@@ -23,14 +24,13 @@ async function getFullShow(seriesURL) {
             }
         })
     )
-
     return show
 }
 
 async function getSeasonLinks(seriesURL) {
     const originUrl = determinPlatform(seriesURL)
-
     const seriesResponse = await fetch(seriesURL)
+
     if (!seriesResponse.ok) {
         throw new Error(
             `Error: Failed to fetch ${seriesURL}: ${seriesResponse.status} ${seriesResponse.statusText}`
@@ -46,32 +46,25 @@ async function getSeasonLinks(seriesURL) {
     )
         .map((link) => {
             const href = link.getAttribute('href')
-            if (!href) return null
-            return href.startsWith('http')
+            return href && href.startsWith('http')
                 ? href
-                : originUrl + href.replace(/^\//, '')
+                : originUrl + (href ? href.replace(/^\//, '') : '') // Simplified
         })
-        .filter((link) => link)
+        .filter(Boolean) // More efficient filtering
 
     const seasonLinks = []
-    const seenLinks = new Set() // Use a Set to track seen links
+    const seenLinks = new Set()
 
     for (const link of potentialSeasonLinks) {
-        const staffelRegex = /staffel-(\d+)$/ // Capture the season number
-        const match = link.match(staffelRegex) // Use match to get the captured group
-
+        const match = link.match(/staffel-(\d+)$/) // Combined regex and match
         if (match && !seenLinks.has(link)) {
-            const seasonNumber = parseInt(match[1], 10) // Parse the captured number as an integer
-            seasonLinks.push({
-                season: seasonNumber,
-                url: link,
-            })
+            const seasonNumber = parseInt(match[1], 10)
+            seasonLinks.push({ season: seasonNumber, url: link })
             seenLinks.add(link)
         }
     }
 
-    // Sort by season number (important if order matters)
-    seasonLinks.sort((a, b) => a.season - b.season)
+    seasonLinks.sort((a, b) => a.season - b.season) // Keep sorting
 
     if (seasonLinks.length === 0) {
         throw new Error(`Error: No seasons found on ${seriesURL}`)
@@ -82,13 +75,14 @@ async function getSeasonLinks(seriesURL) {
 
 async function getSeasonVideoUrls(seasonURL) {
     const originUrl = determinPlatform(seasonURL)
-
     const htmlResponse = await fetch(seasonURL)
+
     if (!htmlResponse.ok) {
         throw new Error(
             `Error: Failed to fetch ${seasonURL}: ${htmlResponse.status} ${htmlResponse.statusText}`
         )
     }
+
     const html = await htmlResponse.text()
     const dom = new JSDOM(html)
     const document = dom.window.document
@@ -96,68 +90,170 @@ async function getSeasonVideoUrls(seasonURL) {
     const episodeLinks = Array.from(
         document.querySelectorAll('ul > li > a[href*="episode"]')
     )
-
-    const episodeUrls = episodeLinks
         .map((link) => {
             const href = link.getAttribute('href')
-            if (!href || href.indexOf('/stream/') < 0) return null
-            return href.startsWith('http')
-                ? href
-                : originUrl + href.replace(/^\//, '')
+            return href && href.indexOf('/stream/') >= 0
+                ? href.startsWith('http')
+                    ? href
+                    : originUrl + href.replace(/^\//, '')
+                : null // combined and simplified
         })
-        .filter((url) => url)
+        .filter(Boolean) // More efficient filtering
 
-    if (episodeUrls.length <= 0) {
+    if (episodeLinks.length === 0) {
         throw new Error(
             `Error: Could not retrieve episode list from url: ${seasonURL}`
         )
     }
 
-    const videoURLRegex =
-        /<a\s+[^>]*class="[^"]*watchEpisode[^"]*"[^>]*href="([^"]*)"/i
-    const seasonNumberRegex =
-        /<meta\s+itemprop="seasonNumber"\s+content="([^"]*)"/i
-    const episodeNumberRegex = /<meta\s+itemprop="episode"\s+content="([^"]*)"/i
+    const episodeData = []
 
-    const results = await Promise.all(
-        episodeUrls.map(async (url) => {
-            const episodeResponse = await fetch(url)
-            if (!episodeResponse.ok) {
-                throw new Error(
-                    `Error: Failed to fetch ${url}: ${episodeResponse.status} ${episodeResponse.statusText}`
-                )
-            }
-            const episodeBody = await episodeResponse.text()
-
-            const urlMatch = episodeBody.match(videoURLRegex)
-            const seasonMatch = episodeBody.match(seasonNumberRegex)
-            const episodeMatch = episodeBody.match(episodeNumberRegex)
-
-            // if (episodeMatch && episodeMatch[1] === "1") { //For debugging only
-            //    fs.writeFileSync("body.html", episodeBody);
-            // }
-
-            if (urlMatch && seasonMatch && episodeMatch) {
-                return {
-                    // Return an object for clarity
-                    season: parseInt(seasonMatch[1]),
-                    episode: parseInt(episodeMatch[1]),
-                    videoUrl: originUrl + urlMatch[1],
-                }
-            }
-            return null
-        })
-    )
-
-    const videoURLs = results.filter((result) => result)
-
-    if (videoURLs.length <= 0) {
-        throw new Error('Error: Could not retrieve video URLs!')
+    for (const url of episodeLinks) {
+        const match = url.match(/staffel-(\d+)\/episode-(\d+)/) // Combined regex and match
+        if (match) {
+            const season = parseInt(match[1], 10)
+            const episode = parseInt(match[2], 10)
+            episodeData.push({ season, episode, url }) // Shorthand property names
+        }
     }
 
-    videoURLs.sort((a, b) => parseInt(a.episode, 10) - parseInt(b.episode, 10)) // Sort by episode
+    return episodeData
+}
 
-    return videoURLs // Return the array of video URL objects
+async function getStreamUrl(
+    episodeUrl,
+    preferredLanguage = 'German',
+    preferredProviders = ['Luluvdo', 'VOE', 'Streamtape']
+) {
+    const originUrl = determinPlatform(episodeUrl)
+    try {
+        const response = await fetch(episodeUrl)
+        if (!response.ok) {
+            throw new Error(
+                `HTTP error! status: ${response.status} for URL: ${episodeUrl}`
+            )
+        }
+        const htmlContent = await response.text()
+
+        fs.writeFileSync('debug.html', htmlContent) // Debugging
+
+        const langKeyMapping = extractLangKeyMapping(
+            new JSDOM(htmlContent).window.document
+        ) // Extract mapping *once*
+
+        if (!langKeyMapping || Object.keys(langKeyMapping).length === 0) {
+            return {
+                provider: null,
+                url: null,
+                error: 'No language mapping found on this page.',
+            }
+        }
+
+        if (!langKeyMapping[preferredLanguage]) {
+            // Check if the preferred language exists
+            return {
+                provider: null,
+                url: null,
+                error: `No streams found in the preferred language (${preferredLanguage}). Available languages are: ${Object.keys(langKeyMapping).join(', ')}`,
+            }
+        }
+
+        for (const provider of preferredProviders) {
+            try {
+                const streamUrl = getHrefByLanguage(
+                    htmlContent,
+                    preferredLanguage,
+                    provider
+                )
+                if (streamUrl) {
+                    return { provider: provider, url: originUrl + streamUrl }
+                }
+            } catch (providerError) {
+                console.debug(
+                    `Provider ${provider} unavailable for ${episodeUrl} in ${preferredLanguage}:`,
+                    providerError.message
+                )
+            }
+        }
+
+        return {
+            provider: null,
+            url: null,
+            error: `No stream URL found for ${episodeUrl} in ${preferredLanguage} with the preferred providers.`,
+        }
+    } catch (error) {
+        console.error('Error fetching or processing stream URL:', error)
+        return { provider: null, url: null, error: error.message }
+    }
+}
+
+function getHrefByLanguage(htmlContent, language, provider) {
+    const dom = new JSDOM(htmlContent)
+    const document = dom.window.document
+    const soup = document
+
+    const langKeyMapping = extractLangKeyMapping(soup)
+
+    if (!langKeyMapping) {
+        throw new LanguageError(console.error('No language mapping found.'))
+    }
+
+    console.log(langKeyMapping)
+    let langKey = langKeyMapping.hasOwnProperty(language)
+        ? langKeyMapping[language]
+        : undefined
+    if (langKey === undefined) {
+        const firstLang = Object.keys(langKeyMapping)[0]
+
+        langKey = langKeyMapping[firstLang]
+    }
+
+    const liElements = soup.querySelectorAll(`li[data-lang-key="${langKey}"]`)
+    let matchingLiElement = null
+
+    for (const li of liElements) {
+        const h4 = li.querySelector('a h4') // Select <h4> inside <a> inside <li>
+        if (h4 && h4.textContent.trim() === provider) {
+            matchingLiElement = li
+            break
+        }
+    }
+    console.log(matchingLiElement)
+    if (matchingLiElement) {
+        const href = matchingLiElement.getAttribute('data-link-target') || ''
+        return href
+    }
+}
+function extractLangKeyMapping(soup) {
+    const langKeyMapping = {}
+    const changeLanguageDiv = soup.querySelector('div.changeLanguageBox')
+
+    if (changeLanguageDiv) {
+        const langElements = changeLanguageDiv.querySelectorAll('img')
+        langElements.forEach((langElement) => {
+            const language =
+                (langElement.getAttribute('alt') || '') +
+                ',' +
+                (langElement.getAttribute('title') || '')
+            const dataLangKey = langElement.getAttribute('data-lang-key') || ''
+            if (language && dataLangKey) {
+                langKeyMapping[language] = dataLangKey
+            }
+        })
+    }
+
+    const ret = restructureDict(langKeyMapping)
+
+    return ret
+}
+
+function restructureDict(langKeyMapping) {
+    const restructured = {}
+    for (const key in langKeyMapping) {
+        const parts = key.split(',')
+        restructured[parts[0]] = langKeyMapping[key]
+    }
+    return restructured
 }
 
 module.exports = {
